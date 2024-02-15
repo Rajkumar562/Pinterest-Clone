@@ -3,10 +3,35 @@ var router = express.Router();
 const userModel = require("./users");
 const postModel = require("./posts");
 const upload = require("./multer");
+require("dotenv").config();
 
+const google_auth = require("passport-google-oauth20");
 const localStrategy = require("passport-local");
 const passport = require("passport");
 passport.use(new localStrategy(userModel.authenticate()));
+
+var GoogleStrategy = google_auth.Strategy;
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/oauth2/redirect/google",
+    },
+    async function (accessToken, refreshToken, profile, cb) {
+      try {
+        const email = profile.emails[0].value;
+        let user = await userModel.findOne({ email: email });
+        if (!user) {
+          user = await userModel.create({ email: email, fullname: profile.displayName, username: email });
+        }
+        return cb(null, user);
+      } catch (error) {
+        return cb(error);
+      }
+    }
+  )
+);
 
 /* GET home page. */
 router.get("/", function (req, res, next) {
@@ -85,6 +110,16 @@ router.post(
     failureFlash: true,
   }),
   function (req, res) {}
+);
+
+router.get("/login/google", passport.authenticate("google", { scope: ["email"] }));
+
+router.get(
+  "/oauth2/redirect/google",
+  passport.authenticate("google", { failureRedirect: "/login", failureMessage: true }),
+  function (req, res) {
+    res.redirect("/profile");
+  }
 );
 
 router.get("/logout", function (req, res) {
